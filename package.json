@@ -1,0 +1,30 @@
+{
+  "name": "doma-scheduled-sniper",
+  "version": "2.0.0",
+  "description": "Schedule-based bot untuk snipe token domain di app.doma.xyz",
+  "main": "sniper.js",
+  "scripts": {
+    "start": "node sniper.js",
+    "test": "node sniper.js test 1",
+    "show": "node sniper.js show",
+    "schedule": "node schedule-helper.js",
+    "list": "node schedule-helper.js list",
+    "gas": "node gas-calculator.js",
+    "gas-table": "node gas-calculator.js table",
+    "gas-custom": "node gas-calculator.js custom"
+  },
+  "keywords": [
+    "doma",
+    "sniper",
+    "bot",
+    "scheduled",
+    "domain",
+    "token"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "ethers": "^6.9.0",
+    "dotenv": "^16.3.1"
+  }
+}
