@@ -33,7 +33,9 @@ async function addSchedule() {
   
   const domain = await question('Domain name (e.g., brag.com): ');
   const tokenAddress = await question('Token address (0x...): ');
-  
+  console.log('\n📋 Please fill in the launchpad address for the token:');
+  const launchpadAddress = await question('Launchpad address (0x...): ');
+
   // Date input dengan helper
   console.log('\n⏰ Launch Time (UTC)');
   console.log('   Format: YYYY-MM-DD HH:MM');
@@ -54,6 +56,7 @@ async function addSchedule() {
     enabled: true,
     domain,
     tokenAddress,
+    launchpadAddress,
     launchTime,
     usdcAmount,
     slippage: parseInt(slippage),
@@ -90,6 +93,7 @@ function listSchedule() {
     
     console.log(`${status} [${idx + 1}] ${item.domain}`);
     console.log(`   Token: ${item.tokenAddress}`);
+    console.log(`   Launchpad: ${item.launchpadAddress}`);
     console.log(`   Launch: ${launchDate.toLocaleString()} ${isPast ? '⚠️ PAST' : ''}`);
     console.log(`   Amount: ${item.usdcAmount} USDC`);
     console.log(`   Settings: Slippage ${item.slippage}% | Gas ${item.gasMultiplier}x | Max ${item.maxGasPrice} gwei`);
