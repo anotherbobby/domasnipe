@@ -8,7 +8,6 @@ const path = require('path');
 
 // Configuration
 const RPC_URL = 'https://doma.drpc.org';
-const DOMA_LAUNCHPAD = '0x535f494Cf6447068CfE54936401740Ce5FC4dCAD';
 const USDC_ADDRESS = '0x31EEf89D5215C305304a2fA5376a1f1b6C5dc477';
 
 const PRIVATE_KEY = process.env.PRIVATE_KEY;
@@ -16,7 +15,7 @@ const SCHEDULE_FILE = process.env.SCHEDULE_FILE || './schedule.json';
 
 // ABI
 const LAUNCHPAD_ABI = [
-  'function buy(address token, uint256 minAmount) external payable',
+  'function buy(uint256 quoteAmount, uint256 minTokenAmount) external payable',
   'function getPrice(address token) external view returns (uint256)',
   'function getAvailableAmount(address token) external view returns (uint256)'
 ];
@@ -34,9 +33,8 @@ class DomaScheduledSniper {
   constructor() {
     this.provider = new ethers.JsonRpcProvider(RPC_URL);
     this.wallet = new ethers.Wallet(PRIVATE_KEY, this.provider);
-    this.launchpad = new ethers.Contract(DOMA_LAUNCHPAD, LAUNCHPAD_ABI, this.wallet);
     this.usdc = new ethers.Contract(USDC_ADDRESS, ERC20_ABI, this.wallet);
-    
+
     this.schedule = [];
     this.timers = [];
     this.isRunning = false;
@@ -54,18 +52,17 @@ class DomaScheduledSniper {
     
     const usdcBalance = await this.usdc.balanceOf(this.wallet.address);
     console.log('💵 USDC Balance:', ethers.formatUnits(usdcBalance, 6));
-    
-    await this.ensureApproval();
+
     await this.loadSchedule();
   }
 
-  async ensureApproval() {
+  async ensureApproval(launchpadAddress) {
     const amount = ethers.parseUnits("10000000", 6); // 10M USDC
-    const allowance = await this.usdc.allowance(this.wallet.address, DOMA_LAUNCHPAD);
-    
+    const allowance = await this.usdc.allowance(this.wallet.address, launchpadAddress);
+
     if (allowance < amount) {
-      console.log('\n⏳ Approving USDC for Launchpad...');
-      const tx = await this.usdc.approve(DOMA_LAUNCHPAD, ethers.MaxUint256, {
+      console.log(`\n⏳ Approving USDC for Launchpad ${launchpadAddress}...`);
+      const tx = await this.usdc.approve(launchpadAddress, ethers.MaxUint256, {
         gasLimit: 100000
       });
       const receipt = await tx.wait();
@@ -97,6 +94,7 @@ class DomaScheduledSniper {
         "enabled": true,
         "domain": "brag.com",
         "tokenAddress": "0xa1000000006E7B861b62233823062DA63c75C408",
+        "launchpadAddress": "0x5089863E97196773038f98459262D866f2281f58",
         "launchTime": "2024-12-19T10:00:00Z",
         "usdcAmount": "100",
         "slippage": 5,
@@ -110,6 +108,7 @@ class DomaScheduledSniper {
         "enabled": false,
         "domain": "example.xyz",
         "tokenAddress": "0x0000000000000000000000000000000000000000",
+        "launchpadAddress": "0x27E022E96287F93ed69B12e10BaCd362a821Fa1f",
         "launchTime": "2024-12-20T15:30:00Z",
         "usdcAmount": "50",
         "slippage": 3,
@@ -134,6 +133,7 @@ class DomaScheduledSniper {
       
       console.log(`${status} [${idx + 1}] ${item.domain}`);
       console.log(`   Token: ${item.tokenAddress}`);
+      console.log(`   Launchpad: ${item.launchpadAddress}`);
       console.log(`   Launch: ${launchDate.toLocaleString()}`);
       
       if (item.enabled) {
@@ -229,11 +229,18 @@ class DomaScheduledSniper {
 
   async snipeBuy(config) {
     const tokenAddress = config.tokenAddress;
-    
+    const launchpadAddress = config.launchpadAddress;
+
+    // Create launchpad contract
+    const launchpad = new ethers.Contract(launchpadAddress, LAUNCHPAD_ABI, this.wallet);
+
+    // Ensure approval
+    await this.ensureApproval(launchpadAddress);
+
     // 1. Get token info
     console.log('📊 Fetching token info...');
     const token = new ethers.Contract(tokenAddress, ERC20_ABI, this.provider);
-    
+
     try {
       const [name, symbol] = await Promise.all([
         token.name(),
@@ -249,15 +256,15 @@ class DomaScheduledSniper {
     console.log('\n💵 Checking price...');
     let currentPrice = 0n;
     try {
-      currentPrice = await this.launchpad.getPrice(tokenAddress);
-      console.log(`   Price: ${ethers.formatUnits(currentPrice, 6)} USDC`);
+      currentPrice = await launchpad.getPrice(tokenAddress);
+      console.log(`   Price: ${ethers.formatUnits(currentPrice, 6)} USDC per token`);
     } catch (e) {
-      console.log('   ⚠️  Could not fetch price (might not be launched yet)');
+      console.log('   ⚠️  Could not fetch price (might not be available yet)');
     }
 
     // 3. Calculate amounts
     const usdcAmount = ethers.parseUnits(config.usdcAmount, 6);
-    
+
     // Calculate minTokenAmount dengan slippage
     let minTokenAmount = 0n;
     if (currentPrice > 0n) {
@@ -273,7 +280,7 @@ class DomaScheduledSniper {
     console.log('\n⛽ Estimating gas...');
     let gasEstimate;
     try {
-      gasEstimate = await this.launchpad.buy.estimateGas(tokenAddress, minTokenAmount);
+      gasEstimate = await launchpad.buy.estimateGas(usdcAmount, minTokenAmount);
       console.log(`   Estimate: ${gasEstimate.toString()}`);
     } catch (error) {
       console.log('   ⚠️  Estimation failed, using default: 300000');
@@ -293,13 +300,13 @@ class DomaScheduledSniper {
 
     // 6. Execute transaction
     console.log('\n📤 Sending transaction...');
-    
+
     // Get current nonce to avoid nonce conflicts
     const nonce = await this.provider.getTransactionCount(this.wallet.address, 'latest');
     console.log(`   Using nonce: ${nonce}`);
-    
-    const tx = await this.launchpad.buy(
-      tokenAddress,
+
+    const tx = await launchpad.buy(
+      usdcAmount,
       minTokenAmount,
       {
         gasLimit: gasLimit,
