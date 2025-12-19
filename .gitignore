@@ -1,0 +1,32 @@
+# Environment variables (SENSITIVE!)
+.env
+.env.local
+.env.*.local
+
+# Schedule file (contains your strategy)
+schedule.json
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+logs/
+*.log
+
+# Backup files
+*.bak
+schedule.json.backup

@@ -286,20 +286,26 @@ class DomaScheduledSniper {
 
     // 5. Prepare transaction
     const maxGasPrice = ethers.parseUnits(config.maxGasPrice, 'gwei');
-    const maxPriorityFee = ethers.parseUnits('10', 'gwei'); // Fixed priority
+    const maxPriorityFee = ethers.parseUnits('0.1', 'gwei'); // Fixed priority
 
     console.log(`   Max gas price: ${config.maxGasPrice} gwei`);
-    console.log(`   Priority fee: 10 gwei`);
+    console.log(`   Priority fee: 0.1 gwei`);
 
     // 6. Execute transaction
     console.log('\n📤 Sending transaction...');
+    
+    // Get current nonce to avoid nonce conflicts
+    const nonce = await this.provider.getTransactionCount(this.wallet.address, 'latest');
+    console.log(`   Using nonce: ${nonce}`);
+    
     const tx = await this.launchpad.buy(
       tokenAddress,
       minTokenAmount,
       {
         gasLimit: gasLimit,
         maxFeePerGas: maxGasPrice,
-        maxPriorityFeePerGas: maxPriorityFee
+        maxPriorityFeePerGas: maxPriorityFee,
+        nonce: nonce
       }
     );
 

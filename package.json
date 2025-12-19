@@ -7,11 +7,11 @@
     "start": "node sniper.js",
     "test": "node sniper.js test 1",
     "show": "node sniper.js show",
-    "schedule": "node schedule-helper.js",
-    "list": "node schedule-helper.js list",
-    "gas": "node gas-calculator.js",
-    "gas-table": "node gas-calculator.js table",
-    "gas-custom": "node gas-calculator.js custom"
+    "schedule": "node schedule_helper.js",
+    "list": "node schedule_helper.js list",
+    "gas": "node gas_calculator.js",
+    "gas-table": "node gas_calculator.js table",
+    "gas-custom": "node gas_calculator.js custom"
   },
   "keywords": [
     "doma",
