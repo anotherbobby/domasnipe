@@ -7,7 +7,7 @@ const fs = require('fs');
 const path = require('path');
 
 // Configuration
-const RPC_URL = 'https://fraa-flashbox-2800-rpc.a.stagenet.tanssi.network';
+const RPC_URL = 'https://doma.drpc.org';
 const DOMA_LAUNCHPAD = '0x535f494Cf6447068CfE54936401740Ce5FC4dCAD';
 const USDC_ADDRESS = '0x31EEf89D5215C305304a2fA5376a1f1b6C5dc477';
 

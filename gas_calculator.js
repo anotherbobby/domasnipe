@@ -8,7 +8,8 @@ const BUY_GAS_ESTIMATE = 250000;
 const ETH_PRICE_USD = 3000; // Update this based on current price
 
 function calculateGasCost(gasUnits, gasPriceGwei) {
-  const gasCostWei = BigInt(gasUnits) * BigInt(gasPriceGwei) * BigInt(1e9);
+  const gasPriceWei = gasPriceGwei * 1e9; // Convert gwei to wei
+  const gasCostWei = BigInt(gasUnits) * BigInt(Math.round(gasPriceWei));
   const gasCostEth = Number(gasCostWei) / 1e18;
   const gasCostUsd = gasCostEth * ETH_PRICE_USD;
   return { eth: gasCostEth, usd: gasCostUsd };
@@ -45,15 +46,15 @@ function analyzeSchedule() {
     console.log(`[${idx + 1}] ${item.domain}`);
     
     const gasLimit = Math.floor(BUY_GAS_ESTIMATE * item.gasMultiplier);
-    const maxGasPriceGwei = parseInt(item.maxGasPrice);
+    const maxGasPriceGwei = parseFloat(item.maxGasPrice);
     
     // Single attempt cost
     const singleAttempt = calculateGasCost(gasLimit, maxGasPriceGwei);
-    
+
     // Min cost (1 attempt + approval if first)
     const minGas = idx === 0 ? APPROVAL_GAS + gasLimit : gasLimit;
     const minCost = calculateGasCost(minGas, maxGasPriceGwei);
-    
+
     // Max cost (all retries + approval if first)
     const maxGas = (idx === 0 ? APPROVAL_GAS : 0) + (gasLimit * item.retryAttempts);
     const maxCost = calculateGasCost(maxGas, maxGasPriceGwei);
