@@ -1,41 +1,64 @@
-// Test script to verify wallet address and RPC connection
-require('dotenv').config();
 const { ethers } = require('ethers');
+require('dotenv').config();
 
-// Configuration
-const RPC_URL = 'https://doma.drpc.org';
-const PRIVATE_KEY = process.env.PRIVATE_KEY;
-
-console.log('🔍 Testing Wallet and RPC Configuration\n');
-
-// 1. Check if private key is loaded
-if (!PRIVATE_KEY || PRIVATE_KEY === 'your_private_key_here') {
-  console.error('❌ Private key not set in .env file');
-  process.exit(1);
+async function testWalletRecovery() {
+    try {
+        console.log('=== Testing Wallet Recovery ===\n');
+        
+        // Get private key from .env
+        const privateKey = process.env.PRIVATE_KEY;
+        
+        if (!privateKey) {
+            console.error('❌ Error: PRIVATE_KEY not found in .env file');
+            return;
+        }
+        
+        console.log('🔑 Private Key:', privateKey);
+        console.log('🔍 Testing wallet recovery...\n');
+        
+        // Create wallet from private key
+        const wallet = new ethers.Wallet(privateKey);
+        
+        console.log('✅ Wallet successfully created!');
+        console.log('📍 Wallet Address:', wallet.address);
+        console.log('🔍 Checksum Address:', wallet.address);
+        
+        // Verify the private key format
+        if (privateKey.startsWith('0x')) {
+            console.log('✅ Private key has correct 0x prefix');
+        } else {
+            console.log('⚠️  Warning: Private key should start with 0x');
+        }
+        
+        // Test signing capability
+        const testMessage = 'Test message for signing';
+        const signature = await wallet.signMessage(testMessage);
+        console.log('✅ Wallet can sign messages');
+        console.log('📝 Test signature:', signature);
+        
+        // Verify signature
+        const recoveredAddress = ethers.verifyMessage(testMessage, signature);
+        if (recoveredAddress.toLowerCase() === wallet.address.toLowerCase()) {
+            console.log('✅ Signature verification successful');
+        } else {
+            console.log('❌ Signature verification failed');
+        }
+        
+        console.log('\n=== Wallet Recovery Test Complete ===');
+        console.log('✅ Private key is valid and can restore wallet');
+        
+    } catch (error) {
+        console.error('❌ Error testing wallet recovery:', error.message);
+        
+        // Provide helpful error information
+        if (error.message.includes('invalid private key')) {
+            console.log('\n💡 Possible issues:');
+            console.log('- Private key format is incorrect');
+            console.log('- Private key contains invalid characters');
+            console.log('- Private key length is wrong');
+        }
+    }
 }
 
-console.log('✅ Private key loaded from .env');
-
-// 2. Create wallet and get address
-try {
-  const provider = new ethers.JsonRpcProvider(RPC_URL);
-  const wallet = new ethers.Wallet(PRIVATE_KEY, provider);
-  
-  console.log('📍 Wallet Address:', wallet.address);
-  console.log('✅ Wallet created successfully');
-  
-  // 3. Test RPC connection
-  console.log('\n🌐 Testing RPC connection...');
-  provider.getBlockNumber().then(blockNumber => {
-    console.log('✅ RPC Connection OK');
-    console.log('📊 Current Block:', blockNumber);
-    console.log('\n🎉 All checks passed!');
-  }).catch(error => {
-    console.error('❌ RPC Connection Failed:', error.message);
-    process.exit(1);
-  });
-  
-} catch (error) {
-  console.error('❌ Wallet creation failed:', error.message);
-  process.exit(1);
-}
+// Run the test
+testWalletRecovery();

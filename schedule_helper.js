@@ -1,5 +1,6 @@
 // Schedule Helper - Easy schedule management
 // Usage: node schedule-helper.js [command]
+// Format: Mengikuti struktur schedule.json
 
 const fs = require('fs');
 const readline = require('readline');
@@ -28,28 +29,37 @@ function saveSchedule(schedule) {
   console.log(`✅ Saved to ${SCHEDULE_FILE}`);
 }
 
+// Format sesuai schedule.json
 async function addSchedule() {
   console.log('\n📝 Add New Launch Schedule\n');
   
-  const domain = await question('Domain name (e.g., brag.com): ');
+  const domain = await question('Domain name (e.g., JINGLEBELLS.io): ');
   const tokenAddress = await question('Token address (0x...): ');
-  console.log('\n📋 Please fill in the launchpad address for the token:');
   const launchpadAddress = await question('Launchpad address (0x...): ');
-
-  // Date input dengan helper
+  
+  // Date input sesuai format schedule.json
   console.log('\n⏰ Launch Time (UTC)');
   console.log('   Format: YYYY-MM-DD HH:MM');
-  console.log('   Example: 2024-12-19 10:00');
+  console.log('   Example: 2025-12-24 14:00');
   const launchInput = await question('Launch time: ');
   
-  // Convert to ISO format
-  const launchTime = new Date(launchInput + ':00Z').toISOString();
+  // Konversi format YYYY-MM-DD HH:MM ke ISO 8601
+  let launchTime;
+  try {
+    // Tambahkan :00:00Z untuk membuat format ISO 8601
+    const isoFormat = launchInput + ':00:00Z';
+    launchTime = new Date(isoFormat).toISOString();
+  } catch (e) {
+    console.log('❌ Invalid date format, using current time');
+    launchTime = new Date().toISOString();
+  }
   
-  const usdcAmount = await question('USDC amount (e.g., 100): ');
-  const slippage = await question('Slippage % (default 5): ') || '5';
+  const usdcAmount = await question('USDC amount (e.g., 5): ');
+  const slippage = await question('Slippage % (default 15): ') || '15';
   const gasMultiplier = await question('Gas multiplier (default 1.5): ') || '1.5';
-  const maxGasPrice = await question('Max gas price gwei (default 200): ') || '200';
+  const maxGasPrice = await question('Max gas price (default 0.3): ') || '0.3';
   const retryAttempts = await question('Retry attempts (default 3): ') || '3';
+  const retryDelayMs = await question('Retry delay ms (default 1000): ') || '1000';
   const notes = await question('Notes (optional): ');
   
   const newEntry = {
@@ -63,7 +73,7 @@ async function addSchedule() {
     gasMultiplier: parseFloat(gasMultiplier),
     maxGasPrice,
     retryAttempts: parseInt(retryAttempts),
-    retryDelayMs: 1000,
+    retryDelayMs: parseInt(retryDelayMs),
     notes
   };
   
@@ -96,7 +106,8 @@ function listSchedule() {
     console.log(`   Launchpad: ${item.launchpadAddress}`);
     console.log(`   Launch: ${launchDate.toLocaleString()} ${isPast ? '⚠️ PAST' : ''}`);
     console.log(`   Amount: ${item.usdcAmount} USDC`);
-    console.log(`   Settings: Slippage ${item.slippage}% | Gas ${item.gasMultiplier}x | Max ${item.maxGasPrice} gwei`);
+    console.log(`   Settings: Slippage ${item.slippage}% | Gas ${item.gasMultiplier}x | Max ${item.maxGasPrice}`);
+    console.log(`   Retry: ${item.retryAttempts} attempts, ${item.retryDelayMs}ms delay`);
     if (item.notes) console.log(`   Notes: ${item.notes}`);
     console.log('');
   });
@@ -163,23 +174,29 @@ async function editSchedule() {
   
   const domain = await question(`Domain [${item.domain}]: `) || item.domain;
   const tokenAddress = await question(`Token [${item.tokenAddress}]: `) || item.tokenAddress;
-  const launchInput = await question(`Launch time YYYY-MM-DD HH:MM [${item.launchTime}]: `);
-  const launchTime = launchInput ? new Date(launchInput + ':00Z').toISOString() : item.launchTime;
+  const launchpadAddress = await question(`Launchpad [${item.launchpadAddress}]: `) || item.launchpadAddress;
+  const launchInput = await question(`Launch time [${item.launchTime}]: `);
+  const launchTime = launchInput ? new Date(launchInput + ':00:00Z').toISOString() : item.launchTime;
   const usdcAmount = await question(`USDC amount [${item.usdcAmount}]: `) || item.usdcAmount;
   const slippage = await question(`Slippage % [${item.slippage}]: `) || item.slippage;
   const gasMultiplier = await question(`Gas multiplier [${item.gasMultiplier}]: `) || item.gasMultiplier;
-  const maxGasPrice = await question(`Max gas gwei [${item.maxGasPrice}]: `) || item.maxGasPrice;
+  const maxGasPrice = await question(`Max gas price [${item.maxGasPrice}]: `) || item.maxGasPrice;
+  const retryAttempts = await question(`Retry attempts [${item.retryAttempts}]: `) || item.retryAttempts;
+  const retryDelayMs = await question(`Retry delay ms [${item.retryDelayMs}]: `) || item.retryDelayMs;
   const notes = await question(`Notes [${item.notes}]: `) || item.notes;
   
   schedule[idx] = {
     ...item,
     domain,
     tokenAddress,
+    launchpadAddress,
     launchTime,
     usdcAmount,
     slippage: parseInt(slippage),
     gasMultiplier: parseFloat(gasMultiplier),
     maxGasPrice,
+    retryAttempts: parseInt(retryAttempts),
+    retryDelayMs: parseInt(retryDelayMs),
     notes
   };
   
@@ -192,21 +209,23 @@ function clearSchedule() {
   console.log('\n✅ All schedules cleared!');
 }
 
-function quickAdd(domain, tokenAddress, launchTime, usdcAmount) {
+// Quick add sesuai format schedule.json
+function quickAdd(domain, tokenAddress, launchpadAddress, launchTime, usdcAmount, slippage = 15, gasMultiplier = 1.5, maxGasPrice = "0.3", retryAttempts = 3, retryDelayMs = 1000, notes = "") {
   const schedule = loadSchedule();
   
   schedule.push({
     enabled: true,
     domain,
     tokenAddress,
+    launchpadAddress,
     launchTime: new Date(launchTime).toISOString(),
     usdcAmount,
-    slippage: 5,
-    gasMultiplier: 1.5,
-    maxGasPrice: "200",
-    retryAttempts: 3,
-    retryDelayMs: 1000,
-    notes: "Quick added"
+    slippage,
+    gasMultiplier,
+    maxGasPrice,
+    retryAttempts,
+    retryDelayMs,
+    notes
   });
   
   saveSchedule(schedule);
@@ -261,10 +280,16 @@ async function showMenu() {
 async function main() {
   const args = process.argv.slice(2);
   
-  // Quick add mode
-  if (args[0] === 'quick' && args.length === 5) {
-    // node schedule-helper.js quick "brag.com" "0xabc..." "2024-12-19 10:00" "100"
-    quickAdd(args[1], args[2], args[3], args[4]);
+  // Quick add mode sesuai format schedule.json
+  if (args[0] === 'quick' && args.length >= 5) {
+    // node schedule-helper.js quick "JINGLEBELLS.io" "0xd00000009284eFaa55c228523294BFE80dDbffb3" "0x997ba7E4dC31b0615FB7aAA0Be72Dd611a4d193d" "2025-12-24 14:00" "5"
+    quickAdd(args[1], args[2], args[3], args[4], args[5],
+            args[6] ? parseInt(args[6]) : 15,
+            args[7] ? parseFloat(args[7]) : 1.5,
+            args[8] || "0.3",
+            args[9] ? parseInt(args[9]) : 3,
+            args[10] ? parseInt(args[10]) : 1000,
+            args[11] || "");
     rl.close();
     return;
   }

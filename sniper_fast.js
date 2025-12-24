@@ -15,13 +15,19 @@ const SCHEDULE_FILE = process.env.SCHEDULE_FILE || './schedule.json';
 
 // ABI
 const LAUNCHPAD_ABI = [
-  'function buy(uint256 quoteAmount, uint256 minTokenAmount) external payable returns (uint256, uint256)',
+  'function buy(uint256 quoteAmount, uint256 minTokenAmount) external returns (uint256, uint256)',
+  'function sell(uint256 tokenAmount, uint256 minQuoteAmount) external returns (uint256, uint256)',
+  'function sellOnFail(uint256 tokenAmount) external returns (uint256)',
   'function getAvailableTokensToBuy() external view returns (uint256)',
   'function launchStatus() external view returns (uint8)',
   'function tokensSold() external view returns (uint256)',
   'function quoteRaised() external view returns (uint256)',
   'function tradeLocked() external view returns (bool)',
-  'function migrated() external view returns (bool)'
+  'function migrated() external view returns (bool)',
+  'function launchTokensSupply() external view returns (uint256)',
+  'function domainOwnerProceeds() external view returns (uint256)',
+  'function migratedAt() external view returns (uint256)',
+  'function migrationPool() external view returns (address)'
 ];
 
 const ERC20_ABI = [
@@ -42,6 +48,7 @@ class DomaFastSniper {
     this.schedule = [];
     this.timers = [];
     this.isRunning = false;
+    this.approvedLaunchpads = new Set();
   }
 
   async initialize() {
@@ -58,6 +65,9 @@ class DomaFastSniper {
     console.log('💵 USDC Balance:', ethers.formatUnits(usdcBalance, 6));
 
     await this.loadSchedule();
+    
+    // Approve all launchpads at startup
+    await this.approveAllLaunchpads();
   }
 
   async ensureApproval(launchpadAddress) {
@@ -71,9 +81,35 @@ class DomaFastSniper {
       });
       const receipt = await tx.wait();
       console.log('✅ USDC Approved! TX:', receipt.hash);
+      this.approvedLaunchpads.add(launchpadAddress);
     } else {
       console.log('✅ USDC Already Approved');
     }
+  }
+
+  async approveAllLaunchpads() {
+    console.log('\n🚀 APPROVING ALL LAUNCHPADS AT STARTUP...\n');
+    
+    const uniqueLaunchpads = [...new Set(this.schedule.map(s => s.launchpadAddress))];
+    
+    for (const launchpadAddress of uniqueLaunchpads) {
+      try {
+        const allowance = await this.usdc.allowance(this.wallet.address, launchpadAddress);
+        const amount = ethers.parseUnits("10000000", 6); // 10M USDC
+        
+        if (allowance >= amount) {
+          console.log(`✅ Already approved: ${launchpadAddress}`);
+          this.approvedLaunchpads.add(launchpadAddress);
+        } else {
+          console.log(`⏳ Approving USDC for Launchpad ${launchpadAddress}...`);
+          await this.ensureApproval(launchpadAddress);
+        }
+      } catch (error) {
+        console.error(`❌ Failed to check/approve ${launchpadAddress}:`, error.message);
+      }
+    }
+    
+    console.log(`\n✅ Launchpad approval check complete! Total: ${uniqueLaunchpads.length}\n`);
   }
 
   loadSchedule() {
@@ -101,7 +137,7 @@ class DomaFastSniper {
         "launchpadAddress": "0x6E8a18eA01A903C15AbdC42cff4B5CC0Bcd4C5BD",
         "launchTime": "2026-01-01T00:00:00.000Z",
         "usdcAmount": "5",
-        "slippage": 10,
+        "slippage": 0,
         "gasMultiplier": 1.5,
         "maxGasPrice": "0.3",
         "retryAttempts": 3,
@@ -138,7 +174,7 @@ class DomaFastSniper {
       }
       
       console.log(`   💰 Amount: ${item.usdcAmount} USDC`);
-      console.log(`   ⚙️  Slippage: ${item.slippage}% | Gas: ${item.gasMultiplier}x`);
+      console.log(`   ⚙️  Gas: ${item.gasMultiplier}x`);
       if (item.notes) {
         console.log(`   📝 ${item.notes}`);
       }
@@ -164,37 +200,18 @@ class DomaFastSniper {
         return;
       }
 
-      // Schedule approval 10 seconds before launch
-      const approvalDelay = Math.max(0, delay - 10000);
       console.log(`⏰ Scheduled [${idx + 1}] ${config.domain} in ${Math.round(delay / 1000)}s`);
       
-      // Schedule approval
-      const approvalTimer = setTimeout(() => {
-        this.scheduleApproval(config, idx + 1);
-      }, approvalDelay);
-      
-      // Schedule snipe
+      // Schedule snipe (approval already done at startup)
       const snipeTimer = setTimeout(() => {
         this.executeSnipe(config, idx + 1);
       }, delay);
 
-      this.timers.push(approvalTimer, snipeTimer);
+      this.timers.push(snipeTimer);
       scheduledCount++;
     });
 
     return scheduledCount;
-  }
-
-  async scheduleApproval(config, index) {
-    console.log(`\n⏳ SCHEDULING APPROVAL [${index}]: ${config.domain}`);
-    console.log(`⏰ Time: ${new Date().toLocaleString()}`);
-    
-    try {
-      await this.ensureApproval(config.launchpadAddress);
-      console.log(`✅ Approval completed for [${index}] ${config.domain}\n`);
-    } catch (error) {
-      console.error(`❌ Approval failed for [${index}]:`, error.message);
-    }
   }
 
   async executeSnipe(config, index) {
@@ -206,12 +223,27 @@ class DomaFastSniper {
     console.log(`💰 Amount: ${config.usdcAmount} USDC`);
     console.log('');
 
+    // Check approval status before sniping
+    if (!this.approvedLaunchpads.has(config.launchpadAddress)) {
+      console.log(`⚠️  Launchpad not approved, approving now...`);
+      try {
+        await this.ensureApproval(config.launchpadAddress);
+      } catch (error) {
+        console.error(`❌ Failed to approve launchpad:`, error.message);
+        console.log('\n💀 Snipe failed due to approval error!\n');
+        console.log('='.repeat(60) + '\n');
+        return;
+      }
+    } else {
+      console.log(`✅ Launchpad already approved`);
+    }
+
     let attempt = 0;
     let success = false;
 
     while (attempt < config.retryAttempts && !success) {
       attempt++;
-      
+
       if (attempt > 1) {
         console.log(`\n🔄 Retry attempt ${attempt}/${config.retryAttempts}...`);
         await this.sleep(config.retryDelayMs);
@@ -221,13 +253,13 @@ class DomaFastSniper {
         await this.fastSnipeBuy(config);
         success = true;
         console.log('\n✅ SNIPE SUCCESSFUL!\n');
-        
+
         // Play sound
         process.stdout.write('\x07');
-        
+
       } catch (error) {
         console.error(`\n❌ Attempt ${attempt} failed:`, error.message);
-        
+
         if (attempt >= config.retryAttempts) {
           console.log('\n💀 All retry attempts exhausted!\n');
         }
@@ -244,51 +276,29 @@ class DomaFastSniper {
     // Create launchpad contract
     const launchpad = new ethers.Contract(launchpadAddress, LAUNCHPAD_ABI, this.wallet);
 
-    // 1. Calculate amounts with simplified slippage logic
+    // 1. Calculate amounts - use 1:1000 ratio (1 USDC = 1000 tokens)
     const usdcAmount = ethers.parseUnits(config.usdcAmount, 6);
+    const minTokenAmount = usdcAmount * 1000n; // 1:1000 ratio
     
-    // Simplified slippage protection - use conservative minimum
-    // Since we can't calculate exact token amount without curve model,
-    // use a conservative approach: minTokenAmount = usdcAmount * (1 - slippage)
-    // This assumes 1:1 ratio as conservative estimate
-    const slippageBps = config.slippage * 100;
-    const minTokenAmount = usdcAmount * (10000n - BigInt(slippageBps)) / 10000n;
+    console.log(`   USDC Amount: ${ethers.formatUnits(usdcAmount, 6)}`);
+    console.log(`   Min Token Amount (1:1000): ${ethers.formatUnits(minTokenAmount, 18)}`);
+
+    // 2. Execute transaction with gas price from schedule.json
+    console.log('\n🚀 Sending transaction with gas from schedule...');
     
-    console.log(`   Min Token Amount (with ${config.slippage}% slippage): ${ethers.formatUnits(minTokenAmount, 18)}`);
-
-    // 2. Use fixed gas limit for speed
-    const gasLimit = 300000n; // Fixed gas limit
-    console.log(`   Gas limit (fixed): ${gasLimit.toString()}`);
-
-    // 3. Prepare transaction
-    const maxGasPrice = ethers.parseUnits(config.maxGasPrice, 'gwei');
-    const maxPriorityFee = ethers.parseUnits('0.1', 'gwei');
-
-    console.log(`   Max gas price: ${config.maxGasPrice} gwei`);
-    console.log(`   Priority fee: 0.1 gwei`);
-
-    // 4. Get current nonce
-    const nonce = await this.provider.getTransactionCount(this.wallet.address, 'latest');
-    console.log(`   Using nonce: ${nonce}`);
-
-    // 5. Execute transaction immediately
-    console.log('\n📤 Sending transaction...');
-
     const tx = await launchpad.buy(
       usdcAmount,
       minTokenAmount,
       {
-        gasLimit: gasLimit,
-        maxFeePerGas: maxGasPrice,
-        maxPriorityFeePerGas: maxPriorityFee,
-        nonce: nonce
+        gasLimit: 300000,
+        gasPrice: ethers.parseUnits(config.maxGasPrice || "0.3", "gwei")
       }
     );
     
     console.log(`   TX Hash: ${tx.hash}`);
     console.log(`   🔗 https://explorer.doma.xyz/tx/${tx.hash}`);
     
-    // 6. Wait for confirmation
+    // 3. Wait for confirmation
     console.log('\n⏳ Waiting for confirmation...');
     const receipt = await tx.wait();
 
@@ -300,13 +310,13 @@ class DomaFastSniper {
     console.log(`   Block: ${receipt.blockNumber}`);
     console.log(`   Gas used: ${receipt.gasUsed.toString()}`);
 
-    // 7. Check balance
+    // 4. Check balance
     console.log('\n💰 Checking token balance...');
     const token = new ethers.Contract(tokenAddress, ERC20_ABI, this.provider);
     const balance = await token.balanceOf(this.wallet.address);
     console.log(`   Balance: ${ethers.formatUnits(balance, 18)} tokens`);
 
-    // 8. Calculate stats
+    // 5. Calculate stats
     const gasCost = receipt.gasUsed * receipt.gasPrice;
     console.log(`   Gas cost: ${ethers.formatEther(gasCost)} ETH`);
 

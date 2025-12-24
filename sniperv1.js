@@ -15,34 +15,9 @@ const SCHEDULE_FILE = process.env.SCHEDULE_FILE || './schedule.json';
 
 // ABI
 const LAUNCHPAD_ABI = [
-  'function buy(uint256 quoteAmount, uint256 minTokenAmount) external payable returns (uint256, uint256)',
-  'function sell(uint256 tokenAmount, uint256 minQuoteAmount) external returns (uint256, uint256)',
-  'function sellOnFail(uint256 tokenAmount) external returns (uint256)',
-  'function getAvailableTokensToBuy() external view returns (uint256)',
-  'function launchStatus() external view returns (uint8)',
-  'function tokensSold() external view returns (uint256)',
-  'function quoteRaised() external view returns (uint256)',
-  'function tradeLocked() external view returns (bool)',
-  'function migrated() external view returns (bool)',
-  'function migratedAt() external view returns (uint256)',
-  'function domainOwnerProceeds() external view returns (uint256)',
-  'function migrationPool() external view returns (address)',
-  'function launchTokensSupply() external view returns (uint256)',
-  'function launchStart() external view returns (uint256)',
-  'function launchEnd() external view returns (uint256)',
-  'function domainOwner() external view returns (address)',
-  'function buySellFeeRecipient() external view returns (address)',
-  'function vestingWallet() external view returns (address)',
-  'function buyFeeRateBps() external view returns (uint256)',
-  'function sellFeeRateBps() external view returns (uint256)',
-  'function setBuyFeeRate(uint256 _buyFeeRate) external',
-  'function setSellFeeRate(uint256 _sellFeeRate) external',
-  'function withdrawDomainOwnerProceeds() external',
-  'function withdrawQuoteToken(address withdrawAddress, uint256 amount) external',
-  'function withdrawFractionalToken(address withdrawAddress, uint256 amount) external',
-  'function setTradeLockStatus(bool locked) external',
-  'function adjustLaunchEndTime(uint256 newLaunchEndTime) external',
-  'function adjustLaunchStartTime(uint256 newLaunchStartTime) external'
+  'function buy(uint256 quoteAmount, uint256 minTokenAmount) external payable',
+  'function getPrice(address token) external view returns (uint256)',
+  'function getAvailableAmount(address token) external view returns (uint256)'
 ];
 
 const ERC20_ABI = [
@@ -277,98 +252,28 @@ class DomaScheduledSniper {
       console.log('   ⚠️  Could not fetch token metadata');
     }
 
-    // 2. Get launchpad status and available tokens
-    console.log('\n💵 Checking launchpad status...');
-    let launchStatus = 0;
-    let availableTokens = 0n;
-    let tokensSold = 0n;
-    let quoteRaised = 0n;
-    let tradeLocked = false;
-    let isMigrated = false;
-    
+    // 2. Get current price
+    console.log('\n💵 Checking price...');
+    let currentPrice = 0n;
     try {
-      // Get launch supply and timing from the contract
-      const [launchSupply, launchStart, launchEnd] = await Promise.all([
-        launchpad.launchTokensSupply(),
-        launchpad.launchStart(),
-        launchpad.launchEnd()
-      ]);
-      
-      [launchStatus, availableTokens, tokensSold, quoteRaised, tradeLocked, isMigrated] = await Promise.all([
-        launchpad.launchStatus(),
-        launchpad.getAvailableTokensToBuy(),
-        launchpad.tokensSold(),
-        launchpad.quoteRaised(),
-        launchpad.tradeLocked(),
-        launchpad.migrated()
-      ]);
-      console.log(`   Launch Supply: ${ethers.formatUnits(launchSupply, 18)} tokens`);
-      console.log(`   Launch Start: ${new Date(launchStart * 1000).toLocaleString()}`);
-      console.log(`   Launch End: ${new Date(launchEnd * 1000).toLocaleString()}`);
-      console.log(`   Launch Status: ${launchStatus} (0=PRE_LAUNCH, 1=LAUNCHED, 2=LAUNCH_SUCCEEDED, 3=LAUNCH_FAILED)`);
-      console.log(`   Available Tokens: ${ethers.formatUnits(availableTokens, 18)}`);
-      console.log(`   Tokens Sold: ${ethers.formatUnits(tokensSold, 18)}`);
-      console.log(`   Quote Raised: ${ethers.formatUnits(quoteRaised, 6)} USDC`);
-      console.log(`   Trade Locked: ${tradeLocked ? 'YES' : 'NO'}`);
-      console.log(`   Migrated: ${isMigrated ? 'YES' : 'NO'}`);
-      
-      // Safety checks
-      if (tradeLocked) {
-        throw new Error('Launchpad trading is locked');
-      }
-      if (isMigrated) {
-        throw new Error('Launchpad already migrated');
-      }
-      if (launchStatus !== 1) {
-        throw new Error(`Launch not in progress (status: ${launchStatus})`);
-      }
+      currentPrice = await launchpad.getPrice(tokenAddress);
+      console.log(`   Price: ${ethers.formatUnits(currentPrice, 6)} USDC per token`);
     } catch (e) {
-      console.log('   ⚠️  Could not fetch launchpad status:', e.message);
-      throw e;
-    }
-
-    // 2b. Get additional contract parameters
-    console.log('\n⚙️  Fetching contract parameters...');
-    try {
-      const [buyFeeRate, sellFeeRate, domainOwner, buySellFeeRecipient] = await Promise.all([
-        launchpad.buyFeeRateBps(),
-        launchpad.sellFeeRateBps(),
-        launchpad.domainOwner(),
-        launchpad.buySellFeeRecipient()
-      ]);
-      
-      console.log(`   Buy Fee Rate: ${buyFeeRate / 100}%`);
-      console.log(`   Sell Fee Rate: ${sellFeeRate / 100}%`);
-      console.log(`   Domain Owner: ${domainOwner}`);
-      console.log(`   Fee Recipient: ${buySellFeeRecipient}`);
-    } catch (e) {
-      console.log('   ⚠️  Could not fetch contract parameters:', e.message);
+      console.log('   ⚠️  Could not fetch price (might not be available yet)');
     }
 
     // 3. Calculate amounts
     const usdcAmount = ethers.parseUnits(config.usdcAmount, 6);
 
-    // Calculate minTokenAmount with proper slippage protection
+    // Calculate minTokenAmount dengan slippage
     let minTokenAmount = 0n;
-    if (availableTokens > 0) {
-      // Calculate expected token amount based on available supply ratio
-      // This is a conservative estimate for slippage protection
-      const totalSupplyRatio = availableTokens * 10000n / launchSupply;
-      const expectedTokens = (usdcAmount * totalSupplyRatio) / 10000n;
-      
-      // Apply slippage protection
-      const slippageBps = config.slippage * 100; // Convert percentage to basis points
-      const minTokenAmountRaw = (expectedTokens * (10000n - BigInt(slippageBps))) / 10000n;
-      
-      // Ensure minTokenAmount is at least 1 token if expectedTokens > 0
-      minTokenAmount = minTokenAmountRaw > 0n ? minTokenAmountRaw : 1n;
-      
-      console.log(`   Expected Tokens: ${ethers.formatUnits(expectedTokens, 18)}`);
-      console.log(`   Min Token Amount (with ${config.slippage}% slippage): ${ethers.formatUnits(minTokenAmount, 18)}`);
-      console.log(`   Slippage protection: ${config.slippage}%`);
+    if (currentPrice > 0n) {
+      const expectedTokens = (usdcAmount * ethers.parseUnits("1", 18)) / currentPrice;
+      minTokenAmount = (expectedTokens * BigInt(100 - config.slippage)) / 100n;
+      console.log(`   Expected tokens: ${ethers.formatUnits(expectedTokens, 18)}`);
+      console.log(`   Min tokens (${config.slippage}% slippage): ${ethers.formatUnits(minTokenAmount, 18)}`);
     } else {
-      console.log('   ⚠️  No tokens available for purchase');
-      throw new Error('No tokens available for purchase');
+      console.log('   Using 0 for minTokenAmount (no slippage protection)');
     }
 
     // 4. Estimate gas
@@ -387,17 +292,10 @@ class DomaScheduledSniper {
     console.log(`   Gas limit (${config.gasMultiplier}x): ${gasLimit.toString()}`);
 
     // 5. Prepare transaction
-    // Handle gas price properly - if it contains decimal, treat as gwei, otherwise as wei
-    let maxGasPrice;
-    if (config.maxGasPrice.includes('.')) {
-      maxGasPrice = ethers.parseUnits(config.maxGasPrice, 'gwei');
-      console.log(`   Max gas price: ${config.maxGasPrice} gwei`);
-    } else {
-      maxGasPrice = BigInt(config.maxGasPrice);
-      console.log(`   Max gas price: ${config.maxGasPrice} wei`);
-    }
-    
+    const maxGasPrice = ethers.parseUnits(config.maxGasPrice, 'gwei');
     const maxPriorityFee = ethers.parseUnits('0.1', 'gwei'); // Fixed priority
+
+    console.log(`   Max gas price: ${config.maxGasPrice} gwei`);
     console.log(`   Priority fee: 0.1 gwei`);
 
     // 6. Execute transaction
@@ -407,60 +305,42 @@ class DomaScheduledSniper {
     const nonce = await this.provider.getTransactionCount(this.wallet.address, 'latest');
     console.log(`   Using nonce: ${nonce}`);
 
-    try {
-      const tx = await launchpad.buy(
-        usdcAmount,
-        minTokenAmount,
-        {
-          gasLimit: gasLimit,
-          maxFeePerGas: maxGasPrice,
-          maxPriorityFeePerGas: maxPriorityFee,
-          nonce: nonce
-        }
-      );
-      
-      console.log(`   TX Hash: ${tx.hash}`);
-      console.log(`   🔗 https://explorer.doma.xyz/tx/${tx.hash}`);
-      
-      // 7. Wait for confirmation
-      console.log('\n⏳ Waiting for confirmation...');
-      const receipt = await tx.wait();
-
-      if (receipt.status !== 1) {
-        throw new Error('Transaction failed');
+    const tx = await launchpad.buy(
+      usdcAmount,
+      minTokenAmount,
+      {
+        gasLimit: gasLimit,
+        maxFeePerGas: maxGasPrice,
+        maxPriorityFeePerGas: maxPriorityFee,
+        nonce: nonce
       }
+    );
 
-      console.log('   ✅ Confirmed!');
-      console.log(`   Block: ${receipt.blockNumber}`);
-      console.log(`   Gas used: ${receipt.gasUsed.toString()}`);
+    console.log(`   TX Hash: ${tx.hash}`);
+    console.log(`   🔗 https://explorer.doma.xyz/tx/${tx.hash}`);
 
-      // 8. Check balance
-      console.log('\n💰 Checking token balance...');
-      const balance = await token.balanceOf(this.wallet.address);
-      console.log(`   Balance: ${ethers.formatUnits(balance, 18)} tokens`);
+    // 7. Wait for confirmation
+    console.log('\n⏳ Waiting for confirmation...');
+    const receipt = await tx.wait();
 
-      // 9. Calculate stats
-      const gasCost = receipt.gasUsed * receipt.gasPrice;
-      console.log(`   Gas cost: ${ethers.formatEther(gasCost)} ETH`);
-
-      return receipt;
-      
-    } catch (error) {
-      // Enhanced error handling for specific contract reverts
-      if (error.message.includes('SlippageTooHigh')) {
-        throw new Error(`Slippage too high. Expected at least ${ethers.formatUnits(minTokenAmount, 18)} tokens but got less. Try increasing slippage tolerance.`);
-      } else if (error.message.includes('LaunchNotInProgress')) {
-        throw new Error('Launch not in progress');
-      } else if (error.message.includes('LaunchpadPaused')) {
-        throw new Error('Launchpad trading paused');
-      } else if (error.message.includes('TradeLockStatusChanged')) {
-        throw new Error('Launchpad trading is locked');
-      } else if (error.message.includes('LaunchNotFailed')) {
-        throw new Error('Launch not failed');
-      } else {
-        throw error; // Re-throw unknown errors
-      }
+    if (receipt.status !== 1) {
+      throw new Error('Transaction failed');
     }
+
+    console.log('   ✅ Confirmed!');
+    console.log(`   Block: ${receipt.blockNumber}`);
+    console.log(`   Gas used: ${receipt.gasUsed.toString()}`);
+
+    // 8. Check balance
+    console.log('\n💰 Checking token balance...');
+    const balance = await token.balanceOf(this.wallet.address);
+    console.log(`   Balance: ${ethers.formatUnits(balance, 18)} tokens`);
+
+    // 9. Calculate stats
+    const gasCost = receipt.gasUsed * receipt.gasPrice;
+    console.log(`   Gas cost: ${ethers.formatEther(gasCost)} ETH`);
+
+    return receipt;
   }
 
   sleep(ms) {
