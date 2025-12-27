@@ -7,7 +7,7 @@ const fs = require('fs');
 const path = require('path');
 
 // Configuration
-const RPC_URL = 'https://doma.drpc.org';
+const RPC_URL = process.env.RPC_URL || 'https://doma.drpc.org';
 const USDC_ADDRESS = '0x31EEf89D5215C305304a2fA5376a1f1b6C5dc477';
 
 const PRIVATE_KEY = process.env.PRIVKEY3;
@@ -290,8 +290,9 @@ class DomaFastSniper {
       usdcAmount,
       minTokenAmount,
       {
-        gasLimit: 300000,
-        gasPrice: ethers.parseUnits(config.maxGasPrice || "0.3", "gwei")
+        gasLimit: 500000,
+        gasPrice: ethers.parseUnits(process.env.GAS_PRICE || config.maxGasPrice || "0.3", "gwei"),
+        maxPriorityFeePerGas: ethers.parseUnits(process.env.PRIORITY_FEE || "0.1", "gwei")
       }
     );
     
