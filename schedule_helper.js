@@ -55,11 +55,11 @@ async function addSchedule() {
   }
   
   const usdcAmount = await question('USDC amount (e.g., 5): ');
-  const slippage = await question('Slippage % (default 15): ') || '15';
+  const slippage = await question('Slippage % (default 30): ') || '30';
   const gasMultiplier = await question('Gas multiplier (default 1.5): ') || '1.5';
   const maxGasPrice = await question('Max gas price (default 0.3): ') || '0.3';
-  const retryAttempts = await question('Retry attempts (default 3): ') || '3';
-  const retryDelayMs = await question('Retry delay ms (default 1000): ') || '1000';
+  const retryAttempts = await question('Retry attempts (default 4): ') || '4';
+  const retryDelayMs = await question('Retry delay ms (default 500): ') || '500';
   const notes = await question('Notes (optional): ');
   
   const newEntry = {
