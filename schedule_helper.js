@@ -32,7 +32,9 @@ function saveSchedule(schedule) {
 // Format sesuai schedule.json
 async function addSchedule() {
   console.log('\n📝 Add New Launch Schedule\n');
-  
+
+  const activeInput = await question('Active (y/n, default y): ');
+  const active = !activeInput || activeInput.toLowerCase() === 'y' || activeInput.toLowerCase() === 'yes';
   const domain = await question('Domain name (e.g., JINGLEBELLS.io): ');
   const tokenAddress = await question('Token address (0x...): ');
   const launchpadAddress = await question('Launchpad address (0x...): ');
@@ -63,7 +65,7 @@ async function addSchedule() {
   const notes = await question('Notes (optional): ');
   
   const newEntry = {
-    enabled: true,
+    enabled: active,
     domain,
     tokenAddress,
     launchpadAddress,
