@@ -5,13 +5,16 @@
   "main": "sniper.js",
   "scripts": {
     "start": "node sniper.js",
+    "safe": "node sniper_safe.js",
+    "fast": "node sniper_fast.js",
     "test": "node sniper.js test 1",
     "show": "node sniper.js show",
     "schedule": "node schedule_helper.js",
     "list": "node schedule_helper.js list",
     "gas": "node gas_calculator.js",
     "gas-table": "node gas_calculator.js table",
-    "gas-custom": "node gas_calculator.js custom"
+    "gas-custom": "node gas_calculator.js custom",
+    "wallet": "node test_wallet.js"
   },
   "keywords": [
     "doma",
