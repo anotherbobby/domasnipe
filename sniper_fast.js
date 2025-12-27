@@ -12,6 +12,7 @@ const USDC_ADDRESS = '0x31EEf89D5215C305304a2fA5376a1f1b6C5dc477';
 
 const PRIVATE_KEY = process.env.PRIVKEY3;
 const SCHEDULE_FILE = process.env.SCHEDULE_FILE || './schedule.json';
+const LATENCY_BUFFER_SECONDS = -1; // Adjust launch time by -1 seconds to account for network latency
 
 // ABI
 const LAUNCHPAD_ABI = [
@@ -130,21 +131,20 @@ class DomaFastSniper {
 
   createScheduleTemplate() {
     const template = [
-      {
-        "enabled": true,
-        "domain": "OWNANDTRADE.com",
-        "tokenAddress": "0xfC569C4699337a6757Db74984cBB8819aF3569eB",
-        "launchpadAddress": "0x6E8a18eA01A903C15AbdC42cff4B5CC0Bcd4C5BD",
-        "launchTime": "2026-01-01T00:00:00.000Z",
-        "usdcAmount": "5",
-        "slippage": 0,
-        "gasMultiplier": 1.5,
-        "maxGasPrice": "0.3",
-        "retryAttempts": 3,
-        "retryDelayMs": 1000,
-        "notes": "oke"
-      }
-    ];
+          {
+            "enabled": true,
+            "domain": "OWNANDTRADE.com",
+            "tokenAddress": "0xfC569C4699337a6757Db74984cBB8819aF3569eB",
+            "launchpadAddress": "0x6E8a18eA01A903C15AbdC42cff4B5CC0Bcd4C5BD",
+            "launchTime": "2026-01-01T00:00:00.000Z",
+            "usdcAmount": "5",
+            "slippage": 0,
+            "gasMultiplier": 1.5,
+            "retryAttempts": 3,
+            "retryDelayMs": 1000,
+            "notes": "oke"
+          }
+        ];
 
     fs.writeFileSync(SCHEDULE_FILE, JSON.stringify(template, null, 2));
   }
@@ -174,7 +174,7 @@ class DomaFastSniper {
       }
       
       console.log(`   💰 Amount: ${item.usdcAmount} USDC`);
-      console.log(`   ⚙️  Gas: ${item.gasMultiplier}x`);
+      console.log(`   ⚙️  Gas: ${item.gasMultiplier}x (using .env GAS_PRICE)`);
       if (item.notes) {
         console.log(`   📝 ${item.notes}`);
       }
@@ -193,14 +193,15 @@ class DomaFastSniper {
       }
 
       const launchTime = new Date(config.launchTime);
-      const delay = launchTime - now;
+      const adjustedLaunchTime = new Date(launchTime.getTime() + LATENCY_BUFFER_SECONDS * 1000);
+      const delay = adjustedLaunchTime - now;
 
       if (delay <= 0) {
         console.log(`⚠️  [${idx + 1}] ${config.domain} launch time already passed!`);
         return;
       }
 
-      console.log(`⏰ Scheduled [${idx + 1}] ${config.domain} in ${Math.round(delay / 1000)}s`);
+      console.log(`⏰ Scheduled [${idx + 1}] ${config.domain} in ${Math.round(delay / 1000)}s (adjusted by ${LATENCY_BUFFER_SECONDS}s)`);
       
       // Schedule snipe (approval already done at startup)
       const snipeTimer = setTimeout(() => {
@@ -283,16 +284,16 @@ class DomaFastSniper {
     console.log(`   USDC Amount: ${ethers.formatUnits(usdcAmount, 6)}`);
     console.log(`   Min Token Amount: ${minTokenAmount} (no slippage protection)`);
 
-    // 2. Execute transaction with gas price from schedule.json
-    console.log('\n🚀 Sending transaction with gas from schedule...');
+    // 2. Execute transaction with gas price from .env only (legacy gas model, type 0)
+    console.log('\n🚀 Sending transaction with gas from .env (legacy type 0)...');
     
     const tx = await launchpad.buy(
       usdcAmount,
       minTokenAmount,
       {
         gasLimit: 500000,
-        gasPrice: ethers.parseUnits(process.env.GAS_PRICE || config.maxGasPrice || "0.3", "gwei"),
-        maxPriorityFeePerGas: ethers.parseUnits(process.env.PRIORITY_FEE || "0.1", "gwei")
+        gasPrice: ethers.parseUnits(process.env.GAS_PRICE || "0.3", "gwei"),
+        type: 0
       }
     );
     
