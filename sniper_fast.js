@@ -10,7 +10,7 @@ const path = require('path');
 const RPC_URL = 'https://doma.drpc.org';
 const USDC_ADDRESS = '0x31EEf89D5215C305304a2fA5376a1f1b6C5dc477';
 
-const PRIVATE_KEY = process.env.PRIVATE_KEY;
+const PRIVATE_KEY = process.env.PRIVKEY3;
 const SCHEDULE_FILE = process.env.SCHEDULE_FILE || './schedule.json';
 
 // ABI
@@ -278,10 +278,10 @@ class DomaFastSniper {
 
     // 1. Calculate amounts - use 1:1000 ratio (1 USDC = 1000 tokens)
     const usdcAmount = ethers.parseUnits(config.usdcAmount, 6);
-    const minTokenAmount = usdcAmount * 1000n; // 1:1000 ratio
+    const minTokenAmount = 0n; // Remove slippage protection
     
     console.log(`   USDC Amount: ${ethers.formatUnits(usdcAmount, 6)}`);
-    console.log(`   Min Token Amount (1:1000): ${ethers.formatUnits(minTokenAmount, 18)}`);
+    console.log(`   Min Token Amount: ${minTokenAmount} (no slippage protection)`);
 
     // 2. Execute transaction with gas price from schedule.json
     console.log('\n🚀 Sending transaction with gas from schedule...');

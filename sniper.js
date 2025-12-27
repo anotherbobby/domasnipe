@@ -10,7 +10,7 @@ const path = require('path');
 const RPC_URL = 'https://doma.drpc.org';
 const USDC_ADDRESS = '0x31EEf89D5215C305304a2fA5376a1f1b6C5dc477';
 
-const PRIVATE_KEY = process.env.PRIVATE_KEY;
+const PRIVATE_KEY = process.env.PRIVKEY2;
 const SCHEDULE_FILE = process.env.SCHEDULE_FILE || './schedule.json';
 
 // ABI
